@@ -28,7 +28,7 @@ def replay(purchases, miles, total, f0):
 
 
 def exact_cost(miles, prices, total, f0_units, unit_miles=5):
-    """Dynamic programme over integer fuel units (0.5 gal when unit_miles=5, mpg=10)."""
+    """Dynamic program over integer fuel units (0.5 gal when unit_miles=5, mpg=10)."""
     cap_units = int(RANGE / unit_miles)
     unit_gal = unit_miles / MPG
     pts = [0] + list(miles) + [total]
@@ -67,7 +67,7 @@ class PlannerExamples(SimpleTestCase):
         self.assertEqual([p.index for p in got][0], 0)
         self.assertAlmostEqual(got[0].gallons, 50.0 - 40.0)  # arrives with 40, tops up to 50
         replay(got, [100, 300], 750, CAP)
-        self.assertAlmostEqual(got[1].gallons, 15.0)  # last top-up at the dearer station, only what is needed
+        self.assertAlmostEqual(got[1].gallons, 15.0)  # last top-up at the higher-priced station, only what is needed
 
     def test_waits_for_cheaper_station_when_in_range(self):
         got = plan_purchases([300, 600], [4.0, 2.0], 1000, RANGE, MPG)
@@ -104,7 +104,7 @@ class PlannerExamples(SimpleTestCase):
 
 
 class PlannerAgainstExactSolver(SimpleTestCase):
-    def test_1000_random_instances_match_exact_dynamic_programme(self):
+    def test_1000_random_instances_match_exact_dynamic_program(self):
         rng = random.Random(20240611)
         checked = 0
         for _ in range(1000):

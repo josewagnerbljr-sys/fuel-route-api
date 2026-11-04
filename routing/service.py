@@ -49,7 +49,7 @@ def _plan_with_widening(index, route_xyz, route_miles, total_miles, rng, mpg, st
     for corridor in steps:
         keep = offsets <= corridor
         st, off, mk = idx[keep], offsets[keep], marks[keep]
-        # Sort along the route; for the same mile marker, dearest first so that
+        # Sort along the route; for the same mile marker, highest price first so that
         # the cheaper station of a tie is the one that gets used.
         order = np.lexsort((-index.price[st], mk))
         st, off, mk = st[order], off[order], mk[order]
