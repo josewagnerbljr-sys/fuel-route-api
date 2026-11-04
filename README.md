@@ -68,29 +68,64 @@ Response (geometry shortened):
       "address": "I-70, EXIT 203", "city": "Foristell", "state": "MO",
       "latitude": 38.7626, "longitude": -90.9343,
       "price_per_gallon": 2.9257, "miles_from_start": 273.48, "distance_from_route_miles": 8.55,
-      "tank_gallons_on_arrival": 22.652, "gallons_purchased": 27.348
+      "tank_gallons_on_arrival": 22.652, "gallons_purchased": 26.644, "cost_usd": 77.95
     }
   ],
-  "cost": {
-    "total_miles": 800.94,
-    "total_gallons": 80.094,
-    "total_cost_usd": 234.12,
-    "average_price_per_gallon": 2.923,
-    "mpg": 10,
-    "stops_used": 3
+  "fuel": {
+    "vehicle_range_miles": 500.0, "miles_per_gallon": 10.0, "tank_capacity_gallons": 50.0,
+    "trip_gallons_required": 80.094,
+    "starting_tank_gallons": 50.0, "starting_tank_price_per_gallon": 3.059, "starting_tank_cost_usd": 152.95,
+    "gallons_purchased": 30.094, "stops_cost_usd": 87.61,
+    "total_cost_usd": 240.56, "average_price_per_gallon": 3.0035
   },
-  "vehicle": {"max_range_miles": 500, "mpg": 10, "starting_fuel_gallons": 50},
-  "meta": {"external_api_calls": 1, "cached": false}
+  "map": {
+    "type": "FeatureCollection",
+    "features": ["route LineString", "start Point", "finish Point", "one Point per fuel stop"],
+    "html_url": "http://127.0.0.1:8000/api/route/map/?start=Chicago%2C+IL&finish=Dallas%2C+TX"
+  },
+  "meta": {"external_calls": 1, "route_cached": false, "station_search_radius_miles": 15.0, "elapsed_ms": 41.2}
 }
 ```
 
+`map` is standard GeoJSON and works with Leaflet, Mapbox or geojson.io. The route line has about one point every 0.3 miles.
+
+Errors are JSON: `{"error": {"code": "...", "message": "..."}}`.
+
+| Status | Code | Cause |
+| --- | --- | --- |
+| 400 | `invalid_request` | Missing field, bad JSON, bad number. |
+| 400 | `invalid_location` | Malformed coordinates or a point that is not in the USA. |
+| 422 | `location_not_found` | Free text with no US match. |
+| 422 | `route_not_found` | No drivable route between the two points. |
+| 422 | `no_fuel_plan` | No chain of stations keeps the vehicle within range. |
+| 502 | `upstream_error` | The routing or geocoding service failed or timed out. |
+
 ### `GET /api/route/map/`
 
-Returns an HTML page with an interactive map (Leaflet + OpenStreetMap tiles) showing the route and fuel stops.
+Same parameters as the route endpoint. Returns an HTML page with the route, the fuel stops and a summary table (Leaflet and OpenStreetMap tiles, loaded from public CDNs).
 
 ### `GET /api/health/`
 
-Simple health check with station count.
+Returns `{"status": "ok", "stations_loaded": 6626}`.
+
+## How it works
+
+1. Locations. `"City, ST"`, ZIP and coordinates are resolved offline from the ZIP gazetteer in the `zipcodes` package. Only free text reaches Nominatim.
+2. Route. One OSRM call (`overview=full`, GeoJSON geometry). Results are cached per origin/destination pair, so a repeated request makes no external call. A normal request makes one external call; each free-text place adds one geocoder call.
+3. Stations on the route. The route is resampled every 0.5 miles and a KD-tree finds every station within 15 miles of it, together with its mile marker. If no feasible plan exists, the radius widens to 30 and then 60 miles. The radius used is reported in `meta`.
+4. Cheapest plan. For stations ordered along the route the planner applies a greedy rule that gives the minimum cost: at each station, if a strictly cheaper station is reachable on a full tank, buy only enough to get there; otherwise fill the tank. The destination counts as free fuel, so the last stop buys only what is needed. The tests compare the planner with a brute-force dynamic programme on 1,000 random instances.
+5. Cost. Each stop reports gallons, price and cost rounded to cents. `stops_cost_usd` is their sum.
+
+Everything after the routing call runs in memory (stations are loaded once per process) and takes a few milliseconds.
+
+## Assumptions
+
+- Range is 500 miles and consumption is 10 mpg, so the tank holds 50 gallons. Both are settings.
+- The vehicle leaves with a full tank. That fuel was bought at a station near the origin, so the part burned on the trip is billed at the cheapest price found within 25 miles of the first station on the route (`starting_tank_price_per_gallon`). `total_cost_usd` is that amount plus `stops_cost_usd`, and covers every gallon the trip burns. Pass `starting_fuel_gallons` to change the starting fuel.
+- The price file has no coordinates. Each station is placed at the centre of its city (mean of the city's ZIP code centroids), so station positions are accurate to a few miles. That is why the default search radius is 15 miles.
+- The file lists some stations several times with different prices. They are merged by OPIS id and the lowest price is kept. Rows in Canadian provinces are skipped. Result: 8,151 rows become 6,626 US stations.
+- Detours are not priced; a station is a candidate when it is inside the search radius.
+- A location counts as being in the USA when it is within 60 miles of a US ZIP code centroid.
 
 ## Configuration
 

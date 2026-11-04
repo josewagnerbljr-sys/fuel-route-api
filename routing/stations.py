@@ -1,24 +1,66 @@
-"""In-memory station index and corridor search."""
+"""In-memory station index, loaded once per process from the database."""
 
-from typing import List, Dict, Any
+from __future__ import annotations
+
+import threading
+
+import numpy as np
+from scipy.spatial import cKDTree
+
+from .geometry import to_xyz
 from .models import FuelStation
 
 
-def load_station_index() -> List[Dict[str, Any]]:
-    """Load all stations into a list of dicts for fast access."""
-    qs = FuelStation.objects.all().values(
-        "id", "opis_id", "name", "address", "city", "state",
-        "retail_price", "latitude", "longitude"
-    )
-    return list(qs)
+class StationIndex:
+    def __init__(self, rows: list[tuple]):
+        # rows: (id, opis_id, name, address, city, state, price, lat, lon)
+        self.rows = rows
+        self.count = len(rows)
+        self.price = np.array([float(r[6]) for r in rows], dtype=float)
+        self.lat = np.array([r[7] for r in rows], dtype=float)
+        self.lon = np.array([r[8] for r in rows], dtype=float)
+        self.xyz = to_xyz(self.lat, self.lon) if rows else np.empty((0, 3))
+
+    @classmethod
+    def from_db(cls) -> "StationIndex":
+        rows = list(
+            FuelStation.objects.order_by("id").values_list(
+                "id", "opis_id", "name", "address", "city", "state",
+                "retail_price", "latitude", "longitude",
+            )
+        )
+        return cls(rows)
+
+    def near_route(self, route_xyz: np.ndarray, route_miles: np.ndarray, max_offset: float):
+        """Stations within ``max_offset`` miles of the route.
+
+        Returns (station_indexes, offset_miles, mile_marker), where the mile
+        marker is the position of the closest route sample.
+        """
+        if not self.count:
+            empty = np.empty(0)
+            return empty.astype(int), empty, empty
+        tree = cKDTree(route_xyz)
+        dist, nearest = tree.query(self.xyz, k=1, distance_upper_bound=max_offset)
+        mask = np.isfinite(dist)
+        idx = np.nonzero(mask)[0]
+        return idx, dist[mask], route_miles[nearest[mask]]
 
 
-def find_stations_in_corridor(
-    stations: List[Dict[str, Any]],
-    route_coords: List[tuple],
-    max_distance_miles: float = 15.0,
-) -> List[Dict[str, Any]]:
-    """Return stations that lie within max_distance_miles of any route point."""
-    # Simplified: for production this would use a spatial index.
-    # Here we return the cheapest stations overall for the planner to filter.
-    return sorted(stations, key=lambda s: float(s["retail_price"]))[:500]
+_lock = threading.Lock()
+_index: StationIndex | None = None
+
+
+def get_index() -> StationIndex:
+    global _index
+    if _index is None:
+        with _lock:
+            if _index is None:
+                _index = StationIndex.from_db()
+    return _index
+
+
+def reset_index() -> None:
+    global _index
+    with _lock:
+        _index = None

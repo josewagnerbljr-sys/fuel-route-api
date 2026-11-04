@@ -1,8 +1,9 @@
 from django.urls import path
-from .views import RouteAPIView, HealthAPIView, MapView
+
+from . import views
 
 urlpatterns = [
-    path('route/', RouteAPIView.as_view(), name='route'),
-    path('route/map/', MapView.as_view(), name='route-map'),
-    path('health/', HealthAPIView.as_view(), name='health'),
+    path("route/", views.route_view, name="route"),
+    path("route/map/", views.map_view, name="route-map"),
+    path("health/", views.health_view, name="health"),
 ]
