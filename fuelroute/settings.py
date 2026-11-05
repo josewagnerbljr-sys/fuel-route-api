@@ -26,6 +26,9 @@ INSTALLED_APPS = [
     "routing",
 ]
 
+# Map tiles are served by OpenStreetMap, which requires a Referer header.
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
