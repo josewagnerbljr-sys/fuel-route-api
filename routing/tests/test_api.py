@@ -183,6 +183,18 @@ class RouteEndpoint(ProviderTestCase):
         bad = self.client.get("/api/route/map/", {"start": "Denver, CO"})
         self.assertEqual(bad.status_code, 400)
 
+    def test_planner_page_and_tutorial(self):
+        r = self.client.get("/")
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        for needle in ('id="route-form"', 'id="plan"', 'id="tour-card"', "Legend", 'translate="no"'):
+            self.assertIn(needle, html)
+        self.assertEqual(self.client.post("/").status_code, 405)
+
+    def test_map_page_has_legend(self):
+        r = self.client.get("/api/route/map/", {"start": "Denver, CO", "finish": "Omaha, NE"})
+        self.assertIn("Legend", r.content.decode())
+
     def test_map_url_round_trips(self):
         data = post(self.client, {"start": "Denver, CO", "finish": "Omaha, NE"}).json()
         url = data["map"]["html_url"].split("testserver", 1)[1]

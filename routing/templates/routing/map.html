@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" translate="no">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="google" content="notranslate">
   <title>Route and fuel stops</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <style>
@@ -24,10 +25,9 @@
 <body>
 <div id="layout">
   <div id="panel">
-    <h1>{{ plan.start.label }} &rarr; {{ plan.finish.label }}</h1>
-    <div>{{ plan.route.distance_miles }} miles, {{ plan.route.duration_hours }} h driving</div>
-    <div class="total">Fuel cost: ${{ plan.fuel.total_cost_usd|floatformat:2 }}
-      ({{ plan.fuel.gallons_purchased|floatformat:1 }} gal purchased)</div>
+    <h1 id="title"></h1>
+    <div id="route"></div>
+    <div id="cost" class="total"></div>
     <table>
       <thead><tr><th>#</th><th>Station</th><th>Mile</th><th>Gal</th><th>$/gal</th></tr></thead>
       <tbody id="stops"></tbody>
@@ -37,54 +37,16 @@
 </div>
 {{ plan|json_script:"plan-data" }}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+{% include "routing/_plan_view.html" %}
 <script>
   var plan = JSON.parse(document.getElementById("plan-data").textContent);
-  var map = L.map("map");
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 18,
-    attribution: "&copy; OpenStreetMap contributors"
-  }).addTo(map);
-
-  var bounds = null;
-  plan.map.features.forEach(function (f) {
-    var p = f.properties;
-    if (f.geometry.type === "LineString") {
-      var latlngs = f.geometry.coordinates.map(function (c) { return [c[1], c[0]]; });
-      var line = L.polyline(latlngs, { color: "#1d4ed8", weight: 4 }).addTo(map);
-      bounds = line.getBounds();
-    } else if (p.kind === "start" || p.kind === "finish") {
-      L.circleMarker([f.geometry.coordinates[1], f.geometry.coordinates[0]], {
-        radius: 8, color: "#111", weight: 2, fillColor: p.kind === "start" ? "#16a34a" : "#dc2626", fillOpacity: 1
-      }).bindPopup("<b>" + p.kind + "</b><br>" + p.label).addTo(map);
-    } else if (p.kind === "fuel_stop") {
-      L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]])
-        .bindPopup("<b>" + p.order + ". " + p.name + "</b><br>" + p.city + ", " + p.state +
-          "<br>$" + p.price_per_gallon.toFixed(3) + "/gal<br>" + p.gallons_purchased.toFixed(1) +
-          " gal = $" + p.cost_usd.toFixed(2) + "<br>mile " + p.miles_from_start)
-        .addTo(map);
-    }
+  PlanView.init("map");
+  PlanView.render(plan, {
+    title: document.getElementById("title"),
+    route: document.getElementById("route"),
+    cost: document.getElementById("cost"),
+    tbody: document.getElementById("stops")
   });
-  if (bounds) { map.fitBounds(bounds, { padding: [30, 30] }); } else { map.setView([39.5, -98.35], 4); }
-
-  var tbody = document.getElementById("stops");
-  plan.fuel_stops.forEach(function (s) {
-    var tr = document.createElement("tr");
-    [s.order, s.name + " (" + s.city + ", " + s.state + ")", s.miles_from_start,
-     s.gallons_purchased.toFixed(1), s.price_per_gallon.toFixed(3)].forEach(function (v) {
-      var td = document.createElement("td");
-      td.textContent = v;
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
-  if (!plan.fuel_stops.length) {
-    var tr = document.createElement("tr");
-    var td = document.createElement("td");
-    td.colSpan = 5;
-    td.textContent = "No fuel stop needed.";
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-  }
 </script>
 </body>
 </html>

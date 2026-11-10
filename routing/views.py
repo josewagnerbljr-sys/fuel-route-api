@@ -132,6 +132,11 @@ def map_view(request):
 
 
 @require_GET
+def home_view(request):
+    return render(request, "routing/home.html")
+
+
+@require_GET
 def health_view(request):
     try:
         count = get_index().count

@@ -1,0 +1,115 @@
+<style>
+  .legend { background: #fff; padding: 8px 10px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,.3); font: 12px/1.6 system-ui, sans-serif; }
+  .legend-title { font-weight: 600; margin-bottom: 2px; }
+  .legend-row { display: flex; align-items: center; gap: 8px; }
+  .swatch { display: inline-block; width: 18px; text-align: center; flex: none; }
+  .swatch.line { height: 4px; background: #1d4ed8; border-radius: 2px; }
+  .swatch.dot { height: 12px; width: 12px; margin: 0 3px; border-radius: 50%; border: 2px solid #111; box-sizing: border-box; }
+  .swatch.dot.start { background: #16a34a; }
+  .swatch.dot.finish { background: #dc2626; }
+  .swatch.pin, .stop-marker { height: 22px; width: 22px; line-height: 18px; border-radius: 50%; background: #1d4ed8; color: #fff; border: 2px solid #fff; box-shadow: 0 0 0 1px #1d4ed8; font-weight: 600; font-size: 12px; text-align: center; box-sizing: border-box; }
+  .stop-marker { width: 26px; height: 26px; line-height: 22px; font-size: 13px; }
+</style>
+<script>
+var PlanView = (function () {
+  var map = null;
+  var layer = null;
+
+  function legend() {
+    var control = L.control({ position: "bottomright" });
+    control.onAdd = function () {
+      var div = L.DomUtil.create("div", "legend");
+      div.innerHTML =
+        '<div class="legend-title">Legend</div>' +
+        '<div class="legend-row"><span class="swatch line"></span>Route</div>' +
+        '<div class="legend-row"><span class="swatch dot start"></span>Start</div>' +
+        '<div class="legend-row"><span class="swatch dot finish"></span>Finish</div>' +
+        '<div class="legend-row"><span class="swatch pin">1</span>Fuel stop (driving order)</div>';
+      return div;
+    };
+    control.addTo(map);
+  }
+
+  function init(elementId) {
+    map = L.map(elementId);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+    layer = L.layerGroup().addTo(map);
+    map.setView([39.5, -98.35], 4);
+    legend();
+    return map;
+  }
+
+  function popup(lines) {
+    var box = document.createElement("div");
+    lines.forEach(function (text, i) {
+      if (i) { box.appendChild(document.createElement("br")); }
+      var node = document.createElement(i === 0 ? "b" : "span");
+      node.textContent = text;
+      box.appendChild(node);
+    });
+    return box;
+  }
+
+  function cell(row, text) {
+    var td = document.createElement("td");
+    td.textContent = text;
+    row.appendChild(td);
+  }
+
+  function render(plan, els) {
+    layer.clearLayers();
+    var bounds = null;
+    plan.map.features.forEach(function (f) {
+      var p = f.properties;
+      var c = f.geometry.coordinates;
+      if (f.geometry.type === "LineString") {
+        var line = L.polyline(c.map(function (x) { return [x[1], x[0]]; }), { color: "#1d4ed8", weight: 4 }).addTo(layer);
+        bounds = line.getBounds();
+      } else if (p.kind === "start" || p.kind === "finish") {
+        L.circleMarker([c[1], c[0]], {
+          radius: 8, color: "#111", weight: 2, fillColor: p.kind === "start" ? "#16a34a" : "#dc2626", fillOpacity: 1
+        }).bindPopup(popup([p.kind === "start" ? "Start" : "Finish", p.label])).addTo(layer);
+      } else if (p.kind === "fuel_stop") {
+        L.marker([c[1], c[0]], {
+          icon: L.divIcon({ className: "", html: '<div class="stop-marker">' + p.order + "</div>", iconSize: [26, 26], iconAnchor: [13, 13] })
+        }).bindPopup(popup([
+          p.order + ". " + p.name,
+          p.city + ", " + p.state,
+          "$" + p.price_per_gallon.toFixed(3) + " per gallon",
+          p.gallons_purchased.toFixed(1) + " gal = $" + p.cost_usd.toFixed(2),
+          "Mile " + p.miles_from_start
+        ])).addTo(layer);
+      }
+    });
+    if (bounds) { map.fitBounds(bounds, { padding: [30, 30] }); }
+
+    els.title.textContent = plan.start.label + " → " + plan.finish.label;
+    els.route.textContent = plan.route.distance_miles + " miles, " + plan.route.duration_hours + " h driving";
+    els.cost.textContent = "Fuel cost: $" + plan.fuel.total_cost_usd.toFixed(2) +
+      " (" + plan.fuel.gallons_purchased.toFixed(1) + " gal purchased)";
+    els.tbody.textContent = "";
+    plan.fuel_stops.forEach(function (s) {
+      var tr = document.createElement("tr");
+      cell(tr, s.order);
+      cell(tr, s.name + " (" + s.city + ", " + s.state + ")");
+      cell(tr, s.miles_from_start);
+      cell(tr, s.gallons_purchased.toFixed(1));
+      cell(tr, s.price_per_gallon.toFixed(3));
+      els.tbody.appendChild(tr);
+    });
+    if (!plan.fuel_stops.length) {
+      var empty = document.createElement("tr");
+      var td = document.createElement("td");
+      td.colSpan = 5;
+      td.textContent = "No fuel stop needed.";
+      empty.appendChild(td);
+      els.tbody.appendChild(empty);
+    }
+  }
+
+  return { init: init, render: render };
+})();
+</script>
