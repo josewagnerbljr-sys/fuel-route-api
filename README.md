@@ -4,7 +4,8 @@ Django API that takes a start and a finish location in the USA and returns:
 
 - the driving route as GeoJSON, plus an HTML map page of the route,
 - the cheapest places to fuel along that route for a vehicle with a 500-mile range,
-- the total money spent on fuel at 10 miles per gallon.
+- the total money spent on fuel at 10 miles per gallon,
+- how much that plan saves compared with buying fuel at the average price along the route.
 
 Fuel prices come from the supplied CSV (`fuel-prices-for-be-assessment.csv`). Routing uses the free
 public [OSRM](https://project-osrm.org/) server. Free-text places that cannot be resolved locally
@@ -33,8 +34,12 @@ curl -X POST http://127.0.0.1:8000/api/route/ \
   -d '{"start": "Chicago, IL", "finish": "Dallas, TX"}'
 ```
 
+Planner page (form, map, legend and a first-use tutorial): `http://127.0.0.1:8000/`
+
 Map page:
 `http://127.0.0.1:8000/api/route/map/?start=Chicago,%20IL&finish=Dallas,%20TX`
+
+A Postman collection with ready-made requests and checks is in `postman/`.
 
 Gunicorn: `gunicorn fuelroute.wsgi:application -w 4 --threads 8`.
 
@@ -78,6 +83,10 @@ Response (geometry shortened):
     "gallons_purchased": 30.094, "stops_cost_usd": 87.61,
     "total_cost_usd": 240.56, "average_price_per_gallon": 3.0035
   },
+  "savings": {
+    "baseline_price_per_gallon": 3.3408, "baseline_cost_usd": 267.58,
+    "saved_usd": 27.02, "saved_percent": 10.1
+  },
   "map": {
     "type": "FeatureCollection",
     "features": ["route LineString", "start Point", "finish Point", "one Point per fuel stop"],
@@ -100,9 +109,17 @@ Errors are JSON: `{"error": {"code": "...", "message": "..."}}`.
 | 422 | `no_fuel_plan` | No chain of stations keeps the vehicle within range. |
 | 502 | `upstream_error` | The routing or geocoding service failed or timed out. |
 
+### Savings
+
+`savings` compares the plan with a simple reference: buying every gallon the trip needs at the average price of the stations found along the route. `baseline_cost_usd` is that reference cost, `saved_usd` is the difference with `total_cost_usd`, and `saved_percent` is the difference as a share of the reference. The values are `null` when no station is near the route. A negative value would mean the plan costs more than the reference.
+
+### `GET /`
+
+Planner page. It has start and finish fields, the results table, the map with a legend, and a short tutorial that points to each control on the first visit (the Tutorial button opens it again). Query parameters `start` and `finish` fill the form and run the plan.
+
 ### `GET /api/route/map/`
 
-Same parameters as the route endpoint. Returns an HTML page with the route, the fuel stops and a summary table (Leaflet and OpenStreetMap tiles, loaded from public CDNs).
+Same parameters as the route endpoint. Returns an HTML page with the route, the fuel stops (numbered in driving order), a legend and a summary table (Leaflet and OpenStreetMap tiles, loaded from public CDNs).
 
 ### `GET /api/health/`
 
@@ -115,6 +132,7 @@ Returns `{"status": "ok", "stations_loaded": 6626}`.
 3. Stations on the route. The route is resampled every 0.5 miles and a KD-tree finds every station within 15 miles of it, together with its mile marker. If no feasible plan exists, the radius widens to 30 and then 60 miles. The radius used is reported in `meta`.
 4. Cheapest plan. For stations ordered along the route the planner applies a greedy rule that gives the minimum cost: at each station, if a strictly cheaper station is reachable on a full tank, buy only enough to get there; otherwise fill the tank. The destination counts as free fuel, so the last stop buys only what is needed. The tests compare the planner with a brute-force dynamic program on 1,000 random instances.
 5. Cost. Each stop reports gallons, price and cost rounded to cents. `stops_cost_usd` is their sum.
+6. Savings. The plan is compared with the average price of the stations in the search corridor (see Savings above).
 
 Everything after the routing call runs in memory (stations are loaded once per process) and takes a few milliseconds.
 
@@ -163,6 +181,10 @@ The suite starts a local server that returns OSRM and Nominatim style responses,
 - endpoint behaviour, input validation, upstream failures, timeouts and caching,
 - 1,000 sequential requests across 48 cities, 1,000 malformed inputs (no 5xx), and 400 requests from 16 threads. Every successful answer is checked for the same invariants: the tank never runs dry or overflows, stops are in order and within range, and the costs add up.
 
+### Postman
+
+Import `postman/fuel-route-api.postman_collection.json`. The `base_url` variable defaults to `http://127.0.0.1:8000`. The collection has requests for the health check, several routes (city names, coordinates, ZIP code, query string, starting fuel) and two error cases. Each request has checks for the status code, the 500-mile gap rule, the savings block and the error codes.
+
 ## Project layout
 
 ```
@@ -175,8 +197,17 @@ routing/
   providers.py              OSRM and Nominatim clients, caching
   service.py                request orchestration and response building
   views.py, urls.py         endpoints
-  templates/routing/map.html
+  templates/routing/         planner page, map page, shared map script
   management/commands/load_stations.py
   tests/
+postman/                    request collection with checks
 fuel-prices-for-be-assessment.csv
 ```
+
+## Possible improvements
+
+Not implemented; listed as the next steps for a production setup.
+
+- Container packaging. A Dockerfile and a compose file would start the API, load the stations and serve it with a production server (gunicorn on Linux, waitress where gunicorn is unavailable) with a single command, regardless of the host system.
+- Vehicle parameters per request. Range and fuel economy are settings today. Accepting optional `vehicle_range_miles` and `miles_per_gallon` fields would let one deployment serve different vehicles, keeping 500 miles and 10 mpg as defaults. The planner already takes both values as arguments, so the change is mostly validation, cache keys and tests.
+- Other candidates: station coordinates from a geocoded address list instead of city centres, pricing detours off the route, a shared cache (for example Redis) when running several processes, and an OpenAPI description of the endpoints.

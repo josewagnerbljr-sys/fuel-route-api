@@ -51,6 +51,12 @@ def check_plan(case, data, rng=500.0, mpg=10.0):
         case.assertAlmostEqual(fuel["starting_tank_cost_usd"], used * fuel["starting_tank_price_per_gallon"], delta=0.02)
     case.assertAlmostEqual(sum(s["gallons_purchased"] for s in stops), fuel["gallons_purchased"], delta=0.01)
 
+    sv = data["savings"]
+    if sv["baseline_cost_usd"] is not None:
+        case.assertAlmostEqual(sv["baseline_cost_usd"], fuel["trip_gallons_required"] * sv["baseline_price_per_gallon"], delta=0.02)
+        case.assertAlmostEqual(sv["baseline_cost_usd"] - fuel["total_cost_usd"], sv["saved_usd"], delta=0.011)
+        case.assertAlmostEqual(sv["saved_usd"] / sv["baseline_cost_usd"] * 100, sv["saved_percent"], delta=0.02)
+
     fc = data["map"]
     case.assertEqual(fc["type"], "FeatureCollection")
     kinds = Counter(f["properties"]["kind"] for f in fc["features"])
@@ -80,6 +86,13 @@ class RouteEndpoint(ProviderTestCase):
         self.assertEqual(self.stub.calls["route"], 1)
         self.assertEqual(data["start"]["resolved_by"], "gazetteer")
         self.assertIn("/api/route/map/?", data["map"]["html_url"])
+
+    def test_savings_against_average_price(self):
+        data = post(self.client, {"start": "New York, NY", "finish": "Los Angeles, CA"}).json()
+        sv = data["savings"]
+        self.assertGreater(sv["saved_usd"], 0)
+        self.assertGreater(sv["saved_percent"], 0)
+        self.assertLess(data["fuel"]["total_cost_usd"], sv["baseline_cost_usd"])
 
     def test_long_trip_has_several_stops_within_range(self):
         data = post(self.client, {"start": "Miami, FL", "finish": "Seattle, WA"}).json()

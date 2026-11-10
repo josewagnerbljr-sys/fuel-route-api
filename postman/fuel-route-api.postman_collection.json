@@ -1,0 +1,441 @@
+{
+  "info": {
+    "name": "Fuel Route API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/health/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "health",
+            ""
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Stations are loaded\", function () { pm.response.to.have.status(200); pm.expect(pm.response.json().stations_loaded).to.be.above(0); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Route: Chicago, IL to Dallas, TX",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Dallas, TX\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+              "const d = pm.response.json();",
+              "pm.test(\"Route and cost are present\", function () {",
+              "  pm.expect(d.route.distance_miles).to.be.above(0);",
+              "  pm.expect(d.fuel.total_cost_usd).to.be.above(0);",
+              "});",
+              "pm.test(\"No gap between stops exceeds the 500-mile range\", function () {",
+              "  const marks = [0].concat(d.fuel_stops.map(s => s.miles_from_start), [d.route.distance_miles]);",
+              "  for (let i = 1; i < marks.length; i++) { pm.expect(marks[i] - marks[i-1]).to.be.at.most(500.5); }",
+              "});",
+              "pm.test(\"Savings block is present\", function () { pm.expect(d.savings).to.have.property(\"saved_usd\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Route: New York, NY to Los Angeles, CA",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"New York, NY\",\n  \"finish\": \"Los Angeles, CA\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+              "const d = pm.response.json();",
+              "pm.test(\"Route and cost are present\", function () {",
+              "  pm.expect(d.route.distance_miles).to.be.above(0);",
+              "  pm.expect(d.fuel.total_cost_usd).to.be.above(0);",
+              "});",
+              "pm.test(\"No gap between stops exceeds the 500-mile range\", function () {",
+              "  const marks = [0].concat(d.fuel_stops.map(s => s.miles_from_start), [d.route.distance_miles]);",
+              "  for (let i = 1; i < marks.length; i++) { pm.expect(marks[i] - marks[i-1]).to.be.at.most(500.5); }",
+              "});",
+              "pm.test(\"Savings block is present\", function () { pm.expect(d.savings).to.have.property(\"saved_usd\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Route: short trip, no stop needed",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Milwaukee, WI\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+              "const d = pm.response.json();",
+              "pm.test(\"Route and cost are present\", function () {",
+              "  pm.expect(d.route.distance_miles).to.be.above(0);",
+              "  pm.expect(d.fuel.total_cost_usd).to.be.above(0);",
+              "  pm.expect(d.fuel_stops.length).to.eql(0);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Route: coordinates and ZIP code",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"41.8781,-87.6298\",\n  \"finish\": \"75201\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+              "const d = pm.response.json();",
+              "pm.test(\"Route and cost are present\", function () {",
+              "  pm.expect(d.route.distance_miles).to.be.above(0);",
+              "  pm.expect(d.fuel.total_cost_usd).to.be.above(0);",
+              "});",
+              "pm.test(\"No gap between stops exceeds the 500-mile range\", function () {",
+              "  const marks = [0].concat(d.fuel_stops.map(s => s.miles_from_start), [d.route.distance_miles]);",
+              "  for (let i = 1; i < marks.length; i++) { pm.expect(marks[i] - marks[i-1]).to.be.at.most(500.5); }",
+              "});",
+              "pm.test(\"Savings block is present\", function () { pm.expect(d.savings).to.have.property(\"saved_usd\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Route: GET with query parameters",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/route/?start=Denver, CO&finish=Seattle, WA",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ],
+          "query": [
+            {
+              "key": "start",
+              "value": "Denver, CO"
+            },
+            {
+              "key": "finish",
+              "value": "Seattle, WA"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+              "const d = pm.response.json();",
+              "pm.test(\"Route and cost are present\", function () {",
+              "  pm.expect(d.route.distance_miles).to.be.above(0);",
+              "  pm.expect(d.fuel.total_cost_usd).to.be.above(0);",
+              "});",
+              "pm.test(\"No gap between stops exceeds the 500-mile range\", function () {",
+              "  const marks = [0].concat(d.fuel_stops.map(s => s.miles_from_start), [d.route.distance_miles]);",
+              "  for (let i = 1; i < marks.length; i++) { pm.expect(marks[i] - marks[i-1]).to.be.at.most(500.5); }",
+              "});",
+              "pm.test(\"Savings block is present\", function () { pm.expect(d.savings).to.have.property(\"saved_usd\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Route: starting fuel option",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Dallas, TX\",\n  \"starting_fuel_gallons\": 20\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+              "const d = pm.response.json();",
+              "pm.test(\"Route and cost are present\", function () {",
+              "  pm.expect(d.route.distance_miles).to.be.above(0);",
+              "  pm.expect(d.fuel.total_cost_usd).to.be.above(0);",
+              "});",
+              "pm.test(\"No gap between stops exceeds the 500-mile range\", function () {",
+              "  const marks = [0].concat(d.fuel_stops.map(s => s.miles_from_start), [d.route.distance_miles]);",
+              "  for (let i = 1; i < marks.length; i++) { pm.expect(marks[i] - marks[i-1]).to.be.at.most(500.5); }",
+              "});",
+              "pm.test(\"Savings block is present\", function () { pm.expect(d.savings).to.have.property(\"saved_usd\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Error: missing finish",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Chicago, IL\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status is 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Error code is invalid_request\", function () { pm.expect(pm.response.json().error.code).to.eql(\"invalid_request\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Error: location outside the USA",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/route/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "route",
+            ""
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"51.5074,-0.1278\",\n  \"finish\": \"Dallas, TX\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status is 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Error code is invalid_location\", function () { pm.expect(pm.response.json().error.code).to.eql(\"invalid_location\"); });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

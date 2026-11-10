@@ -44,6 +44,7 @@ def _station_payload(index, i: int) -> dict:
 
 def _plan_with_widening(index, route_xyz, route_miles, total_miles, rng, mpg, start_fuel):
     last_error: InfeasibleRoute | None = None
+    corridor_mean = None
     steps = sorted(settings.CORRIDOR_MILES)
     idx, offsets, marks = index.near_route(route_xyz, route_miles, steps[-1])
     for corridor in steps:
@@ -62,9 +63,10 @@ def _plan_with_widening(index, route_xyz, route_miles, total_miles, rng, mpg, st
             continue
         start_price = None
         if len(st):
+            corridor_mean = float(index.price[st].mean())
             window = mk <= mk.min() + settings.START_PRICE_WINDOW_MILES
             start_price = float(index.price[st][window].min())
-        return purchases, st, off, corridor, start_price
+        return purchases, st, off, corridor, start_price, corridor_mean
     raise NoFuelPlan(str(last_error))
 
 
@@ -94,12 +96,13 @@ def plan_trip(start_input, finish_input, start_fuel_gallons: float | None = None
     stops: list[dict] = []
     corridor_used = None
     start_price = None
+    corridor_mean = None
     if total_miles > 0.05:
         sample, sample_miles = geometry.resample(coords, cum_scaled, settings.ROUTE_SAMPLE_MILES)
         route_xyz = geometry.to_xyz(sample[:, 0], sample[:, 1])
         index = get_index()
         try:
-            purchases, st, off, corridor_used, start_price = _plan_with_widening(
+            purchases, st, off, corridor_used, start_price, corridor_mean = _plan_with_widening(
                 index, route_xyz, sample_miles, total_miles, rng, mpg, start_tank
             )
         except NoFuelPlan as exc:
@@ -129,6 +132,8 @@ def plan_trip(start_input, finish_input, start_fuel_gallons: float | None = None
     stops_cost = sum((Decimal(str(s["cost_usd"])) for s in stops), Decimal("0.00"))
     total_cost = start_cost + stops_cost
     gallons_bought = sum(s["gallons_purchased"] for s in stops)
+
+    savings = _savings(trip_gallons, corridor_mean, total_cost)
 
     keep = geometry.thin_indices(cum_scaled, settings.GEOMETRY_THIN_MILES)
     line = [[round(float(coords[i, 1]), 5), round(float(coords[i, 0]), 5)] for i in keep]
@@ -184,6 +189,7 @@ def plan_trip(start_input, finish_input, start_fuel_gallons: float | None = None
             "total_cost_usd": float(total_cost),
             "average_price_per_gallon": round(float(total_cost) / trip_gallons, 4) if trip_gallons else None,
         },
+        "savings": savings,
         "map": {"type": "FeatureCollection", "features": features},
         "meta": {
             "external_calls": stats["external_calls"],
@@ -191,6 +197,22 @@ def plan_trip(start_input, finish_input, start_fuel_gallons: float | None = None
             "station_search_radius_miles": corridor_used,
             "elapsed_ms": round((time.perf_counter() - began) * 1000.0, 1),
         },
+    }
+
+
+def _savings(trip_gallons: float, mean_price, total_cost: Decimal) -> dict:
+    """Compare the plan with buying every gallon at the average price along the route."""
+    if mean_price is None or trip_gallons <= 0:
+        return {"baseline_price_per_gallon": None, "baseline_cost_usd": None,
+                "saved_usd": None, "saved_percent": None}
+    baseline = _cents(trip_gallons * mean_price)
+    saved = baseline - total_cost
+    percent = float(saved / baseline * 100) if baseline > 0 else None
+    return {
+        "baseline_price_per_gallon": round(mean_price, 4),
+        "baseline_cost_usd": float(baseline),
+        "saved_usd": float(saved),
+        "saved_percent": round(percent, 2) if percent is not None else None,
     }
 
 

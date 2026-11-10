@@ -90,6 +90,14 @@ var PlanView = (function () {
     els.route.textContent = plan.route.distance_miles + " miles, " + plan.route.duration_hours + " h driving";
     els.cost.textContent = "Fuel cost: $" + plan.fuel.total_cost_usd.toFixed(2) +
       " (" + plan.fuel.gallons_purchased.toFixed(1) + " gal purchased)";
+    var sv = plan.savings;
+    if (els.savings) {
+      els.savings.textContent = (sv && sv.saved_usd !== null)
+        ? "Compared with the average price along the route ($" + sv.baseline_cost_usd.toFixed(2) + "): " +
+          (sv.saved_usd >= 0 ? "saves $" + sv.saved_usd.toFixed(2) : "costs $" + Math.abs(sv.saved_usd).toFixed(2) + " more") +
+          " (" + sv.saved_percent.toFixed(1) + "%)"
+        : "";
+    }
     els.tbody.textContent = "";
     plan.fuel_stops.forEach(function (s) {
       var tr = document.createElement("tr");
